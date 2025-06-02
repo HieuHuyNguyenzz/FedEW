@@ -1,8 +1,8 @@
 from model import get_model
 from utils import test, get_parameters, set_parameters, compute_entropy
 from DataProcessing import data_preprocessing
-from Strategy.Baseline import FedAvg, FedProx, FedImp
-from Client import Baseline_Client, Baseline_Client
+from Strategy.Baseline import FedAvg, FedProx, FedImp, FedAdp
+from Client import Baseline_Client, FedProx_Client, FedImp_Client
 from ClientManager import ClientManager
 import flwr as fl
 from flwr.common import ndarrays_to_parameters, Scalar, NDArrays
@@ -54,8 +54,7 @@ def run_simulation(algorithm: str = "FedAvg",
         def client_fn(cid: str) -> Baseline_Client:
             net = model
             trainloader = trainloaders[int(cid)]
-            valloader = testloaders
-            return Baseline_Client(cid, net, trainloader, valloader).to_client()
+            return Baseline_Client(cid, net, trainloader).to_client()
 
     elif algorithm == "FedProx":
         strategy = FedProx(num_rounds=num_rounds, 
@@ -67,11 +66,10 @@ def run_simulation(algorithm: str = "FedAvg",
                         mu=0.01,
                         ),
 
-        def client_fn(cid: str) -> Baseline_Client:
+        def client_fn(cid: str) -> FedProx_Client:
             net = model
             trainloader = trainloaders[int(cid)]
-            valloader = testloaders
-            return Baseline_Client(cid, net, trainloader, valloader).to_client()
+            return FedProx_Client(cid, net, trainloader).to_client()
 
     elif algorithm == "FedImp":
         entropies = [compute_entropy(dist[i]) for i in range(num_clients)]
@@ -85,12 +83,26 @@ def run_simulation(algorithm: str = "FedAvg",
                         Entropy=compute_entropy(model),
                         ),
 
+        def client_fn(cid: str) -> FedImp_Client:
+            net = model
+            trainloader = trainloaders[int(cid)]
+            entropy = entropies[int(cid)]
+            return FedImp_Client(cid, net, trainloader, entropy).to_client()
+        
+    elif algorithm == "FedAdp":
+        strategy = FedAdp(num_rounds=num_rounds, 
+                        num_clients=num_clients,
+                        current_parameters=current_parameters, 
+                        evaluate_fn=evaluate_centralized,
+                        learning_rate = learning_rate,
+                        client_manager=client_manager,
+                        ),
+
         def client_fn(cid: str) -> Baseline_Client:
             net = model
             trainloader = trainloaders[int(cid)]
-            valloader = testloaders
-            entropy = entropies[int(cid)]
-            return Baseline_Client(cid, net, trainloader, valloader, entropy).to_client()
+            return Baseline_Client(cid, net, trainloader).to_client()
+        
     else:
         raise ValueError(f"Unknown algorithm: {algorithm}")
 
